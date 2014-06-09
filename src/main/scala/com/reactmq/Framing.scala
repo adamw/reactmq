@@ -3,9 +3,11 @@ package com.reactmq
 import akka.util.ByteString
 import javax.annotation.concurrent.NotThreadSafe
 import java.nio.ByteBuffer
+import java.nio.charset.Charset
 
 object Framing {
   val SizeBytes = 4
+  private val utf8charset = Charset.forName("UTF-8")
 
   def createFrame(content: String): ByteString = {
     val contentBytes = content.getBytes(utf8charset)

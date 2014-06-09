@@ -1,8 +1,7 @@
 package com.reactmq
 
 import akka.stream.scaladsl.Flow
-import akka.actor.{Props, ActorSystem}
-import akka.stream.{FlowMaterializer, MaterializerSettings}
+import akka.actor.Props
 import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
@@ -11,14 +10,9 @@ import scala.concurrent.duration._
 import akka.stream.actor.ActorProducer
 import Framing._
 
-object Broker extends App with Logging {
-  implicit val system = ActorSystem()
-  import system.dispatcher
+object Broker extends App with Logging with ReactiveStreamsSupport {
 
-  val settings = MaterializerSettings()
-  val materializer = FlowMaterializer(settings)
-
-  val bindFuture = IO(StreamTcp) ? StreamTcp.Bind(settings, serverAddress)
+  val bindFuture = IO(StreamTcp) ? StreamTcp.Bind(settings, receiveServerAddress)
 
   val queueActor = system.actorOf(Props[QueueActor])
   var idx = 0

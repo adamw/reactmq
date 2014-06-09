@@ -2,22 +2,14 @@ package com.reactmq
 
 import akka.io.IO
 import akka.stream.io.StreamTcp
-import akka.stream.{FlowMaterializer, MaterializerSettings}
-import akka.actor.ActorSystem
 import akka.pattern.ask
 import akka.stream.scaladsl.Flow
 import Framing._
 import com.reactmq.queue.MessageData
 
-object Receiver extends App with Logging {
+object Receiver extends App with Logging with ReactiveStreamsSupport {
 
-  implicit val actorSystem = ActorSystem()
-  import actorSystem.dispatcher
-
-  val settings = MaterializerSettings()
-  val materializer = FlowMaterializer(settings)
-
-  val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(settings, serverAddress)
+  val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(settings, receiveServerAddress)
   connectFuture.onSuccess {
     case binding: StreamTcp.OutgoingTcpConnection =>
       logger.info("Receiver: connected to broker")
@@ -37,7 +29,7 @@ object Receiver extends App with Logging {
 
   connectFuture.onFailure {
     case e: Throwable =>
-      logger.info("Consumer: failed to connect to broker", e)
-      actorSystem.shutdown()
+      logger.info("Receiver: failed to connect to broker", e)
+      system.shutdown()
   }
 }
