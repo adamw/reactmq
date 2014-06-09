@@ -5,29 +5,45 @@ import akka.actor.Props
 import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
-import com.reactmq.queue.{MessageData, SendMessage, DeleteMessage, QueueActor}
-import scala.concurrent.duration._
-import akka.stream.actor.ActorProducer
+import com.reactmq.queue.{MessageData, DeleteMessage, QueueActor}
+import akka.stream.actor.{ActorConsumer, ActorProducer}
 import Framing._
 
 object Broker extends App with ReactiveStreamsSupport {
 
-  val bindFuture = IO(StreamTcp) ? StreamTcp.Bind(settings, receiveServerAddress)
+  val ioExt = IO(StreamTcp)
+  val bindSendFuture = ioExt ? StreamTcp.Bind(settings, sendServerAddress)
+  val bindReceiveFuture = ioExt ? StreamTcp.Bind(settings, receiveServerAddress)
 
   val queueActor = system.actorOf(Props[QueueActor])
-  var idx = 0
-  system.scheduler.schedule(0.seconds, 1.second, queueActor, SendMessage({ idx += 1; s"Message $idx" }))
 
-  bindFuture.onSuccess {
+  bindSendFuture.onSuccess {
     case serverBinding: StreamTcp.TcpServerBinding =>
-      logger.info("Broker: bound")
+      logger.info("Broker: send bound")
 
       Flow(serverBinding.connectionStream).foreach { conn =>
-        logger.info(s"Broker: client connected (${conn.remoteAddress})")
+        logger.info(s"Broker: send client connected (${conn.remoteAddress})")
+
+        val sendToQueueConsumer = ActorConsumer[String](system.actorOf(Props(new SendToQueueConsumer(queueActor))))
+
+        // sending messages to the queue, receiving from the client
+        val reconcileFrames = new ReconcileFrames()
+        Flow(conn.inputStream)
+          .mapConcat(reconcileFrames.apply)
+          .produceTo(materializer, sendToQueueConsumer)
+      }.consume(materializer)
+  }
+
+  bindReceiveFuture.onSuccess {
+    case serverBinding: StreamTcp.TcpServerBinding =>
+      logger.info("Broker: receive bound")
+
+      Flow(serverBinding.connectionStream).foreach { conn =>
+        logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
 
         val receiveFromQueueProducer = ActorProducer[MessageData](system.actorOf(Props(new ReceiveFromQueueProducer(queueActor))))
 
-        // sending messages
+        // receiving messages from the queue, sending to the client
         Flow(receiveFromQueueProducer)
           .map(_.encodeAsString)
           .map(createFrame)
@@ -43,5 +59,6 @@ object Broker extends App with ReactiveStreamsSupport {
       }.consume(materializer)
   }
 
-  handleIOFailure(bindFuture, "Broker: failed to bind")
+  handleIOFailure(bindSendFuture, "Broker: failed to bind send endpoint")
+  handleIOFailure(bindReceiveFuture, "Broker: failed to bind receive endpoint")
 }

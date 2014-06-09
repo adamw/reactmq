@@ -9,13 +9,17 @@ trait QueueActorReceive extends QueueActorMessageOps {
   private val awaitingActors = new collection.mutable.HashMap[ActorRef, Int]()
 
   def handleQueueMsg: Receive = {
-    case sm@SendMessage(content) =>
-      sendMessage(content)
+    case SendMessage(content) =>
+      val id = sendMessage(content)
+      sender() ! SentMessage(id)
       tryReply()
-    case rm@ReceiveMessages(count) =>
-      addAwaitingActor(rm)
+
+    case ReceiveMessages(count) =>
+      addAwaitingActor(sender(), count)
       tryReply()
-    case DeleteMessage(id) => deleteMessage(id)
+
+    case DeleteMessage(id) =>
+      deleteMessage(id)
   }
 
   @tailrec
@@ -25,7 +29,7 @@ trait QueueActorReceive extends QueueActorMessageOps {
         val received = super.receiveMessages(messageCount)
 
         if (received != Nil) {
-          actor ! received
+          actor ! ReceivedMessages(received)
           logger.debug(s"Replying to $actor with ${received.size} messages.")
 
           val newMessageCount = messageCount - received.size
@@ -41,8 +45,7 @@ trait QueueActorReceive extends QueueActorMessageOps {
     }
   }
 
-  private def addAwaitingActor(receiveMessages: ReceiveMessages) {
-    val actor = sender()
-    awaitingActors(actor) = awaitingActors.getOrElse(actor, 0) + receiveMessages.count
+  private def addAwaitingActor(actor: ActorRef, count: Int) {
+    awaitingActors(actor) = awaitingActors.getOrElse(actor, 0) + count
   }
 }

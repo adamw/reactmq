@@ -20,7 +20,7 @@ object Receiver extends App with ReactiveStreamsSupport {
         .mapConcat(reconcileFrames.apply)
         .map(MessageData.decodeFromString)
         .map { md =>
-          logger.info(s"Receiver: received msg: $md")
+          logger.debug(s"Receiver: received msg: $md")
           createFrame(md.id)
         }
         .toProducer(materializer)

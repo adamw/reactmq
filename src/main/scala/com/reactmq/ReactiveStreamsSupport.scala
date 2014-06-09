@@ -5,6 +5,7 @@ import akka.stream.{FlowMaterializer, MaterializerSettings}
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.Future
+import java.net.InetSocketAddress
 
 trait ReactiveStreamsSupport extends Logging {
   implicit val system = ActorSystem()
@@ -22,4 +23,7 @@ trait ReactiveStreamsSupport extends Logging {
         system.shutdown()
     }
   }
+
+  val sendServerAddress     = new InetSocketAddress("localhost", 9182)
+  val receiveServerAddress  = new InetSocketAddress("localhost", 9183)
 }

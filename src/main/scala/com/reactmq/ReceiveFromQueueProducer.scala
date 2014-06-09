@@ -3,7 +3,7 @@ package com.reactmq
 import akka.stream.actor.ActorProducer
 import akka.actor.ActorRef
 import akka.stream.actor.ActorProducer._
-import com.reactmq.queue.{ReceiveMessages, MessageData}
+import com.reactmq.queue.{ReceivedMessages, ReceiveMessages, MessageData}
 
 class ReceiveFromQueueProducer(queueActor: ActorRef) extends ActorProducer[MessageData] {
 
@@ -12,7 +12,7 @@ class ReceiveFromQueueProducer(queueActor: ActorRef) extends ActorProducer[Messa
       queueActor ! ReceiveMessages(elements)
     }
     case Cancel => // TODO: propagate to queue actor
-    case msgs: List[MessageData] => if (isActive) {
+    case ReceivedMessages(msgs) => if (isActive) {
       msgs.foreach(onNext)
     } else {
       // TODO: return messages
