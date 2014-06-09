@@ -6,8 +6,7 @@ import scala.annotation.tailrec
 trait QueueActorReceive extends QueueActorMessageOps {
   this: QueueActorStorage with Actor =>
 
-  private var senderSequence = 0L
-  private val awaitingActors = new collection.mutable.HashMap[Long, ActorAwaitingForMessages]()
+  private val awaitingActors = new collection.mutable.HashMap[ActorRef, Int]()
 
   def handleQueueMsg: Receive = {
     case sm@SendMessage(content) =>
@@ -22,18 +21,18 @@ trait QueueActorReceive extends QueueActorMessageOps {
   @tailrec
   private def tryReply() {
     awaitingActors.headOption match {
-      case Some((seq, aa@ActorAwaitingForMessages(actor, messageCount))) => {
+      case Some((actor, messageCount)) => {
         val received = super.receiveMessages(messageCount)
 
         if (received != Nil) {
           actor ! received
-          logger.debug(s"Replying to sequence $seq with ${received.size} messages.")
+          logger.debug(s"Replying to $actor with ${received.size} messages.")
 
-          val newAwaitingActor = aa.subtractMessages(received.size)
-          if (newAwaitingActor.hasMessages) {
-            awaitingActors(seq) = newAwaitingActor
+          val newMessageCount = messageCount - received.size
+          if (newMessageCount > 0) {
+            awaitingActors(actor) = newMessageCount
           } else {
-            awaitingActors.remove(seq)
+            awaitingActors.remove(actor)
             tryReply() // maybe we can send more replies
           }
         }
@@ -42,15 +41,8 @@ trait QueueActorReceive extends QueueActorMessageOps {
     }
   }
 
-  private def addAwaitingActor(receiveMessages: ReceiveMessages): Long = {
-    val seq = senderSequence
-    senderSequence += 1
-    awaitingActors(seq) = ActorAwaitingForMessages(sender(), receiveMessages.count)
-    seq
-  }
-
-  case class ActorAwaitingForMessages(actor: ActorRef, messageCount: Int) {
-    def hasMessages = messageCount != 0
-    def subtractMessages(count: Int) = this.copy(messageCount = messageCount - count)
+  private def addAwaitingActor(receiveMessages: ReceiveMessages) {
+    val actor = sender()
+    awaitingActors(actor) = awaitingActors.getOrElse(actor, 0) + receiveMessages.count
   }
 }
