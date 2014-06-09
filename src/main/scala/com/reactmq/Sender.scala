@@ -19,10 +19,6 @@ object Sender extends App with ReactiveStreamsSupport {
       val senderName = List.fill(5)(nextChar).mkString
       var idx = 0
 
-      Flow(binding.inputStream)
-        .foreach(println)
-        .consume(materializer)
-
       Flow(1.second, () => { idx += 1; s"Message $idx from $senderName" })
         .map { msg =>
           logger.debug(s"Sender: sending $msg")
