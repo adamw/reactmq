@@ -7,7 +7,7 @@ import akka.stream.scaladsl.Flow
 import Framing._
 import com.reactmq.queue.MessageData
 
-object Receiver extends App with Logging with ReactiveStreamsSupport {
+object Receiver extends App with ReactiveStreamsSupport {
 
   val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(settings, receiveServerAddress)
   connectFuture.onSuccess {
@@ -27,9 +27,5 @@ object Receiver extends App with Logging with ReactiveStreamsSupport {
         .produceTo(binding.outputStream)
   }
 
-  connectFuture.onFailure {
-    case e: Throwable =>
-      logger.info("Receiver: failed to connect to broker", e)
-      system.shutdown()
-  }
+  handleIOFailure(connectFuture, "Receiver: failed to connect to broker")
 }

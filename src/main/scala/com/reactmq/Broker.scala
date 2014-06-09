@@ -10,7 +10,7 @@ import scala.concurrent.duration._
 import akka.stream.actor.ActorProducer
 import Framing._
 
-object Broker extends App with Logging with ReactiveStreamsSupport {
+object Broker extends App with ReactiveStreamsSupport {
 
   val bindFuture = IO(StreamTcp) ? StreamTcp.Bind(settings, receiveServerAddress)
 
@@ -43,9 +43,5 @@ object Broker extends App with Logging with ReactiveStreamsSupport {
       }.consume(materializer)
   }
 
-  bindFuture.onFailure {
-    case e: Throwable =>
-      logger.info("Broker: failed to bind", e)
-      system.shutdown()
-  }
+  handleIOFailure(bindFuture, "Broker: failed to bind")
 }
