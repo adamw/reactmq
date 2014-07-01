@@ -22,6 +22,9 @@ trait QueueActorStorage {
     def compareTo(other: InternalMessage) = - nextDelivery.compareTo(other.nextDelivery)
 
     def toMessageData = MessageData(id, content)
+
+    def toMessageAdded = MessageAdded(id, nextDelivery, content)
+    def toMessageNextDeliveryUpdated = MessageNextDeliveryUpdated(id, nextDelivery)
   }
 
   object InternalMessage {

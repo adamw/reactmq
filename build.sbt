@@ -6,7 +6,7 @@ version := "0.1-SNAPSHOT"
 
 scalaVersion := "2.11.1"
 
-val akkaVersion = "2.3.3"
+val akkaVersion = "2.3.4"
 
 libraryDependencies ++= Seq(
   // akka

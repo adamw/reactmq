@@ -1,11 +1,15 @@
 package com.reactmq.queue
 
-import akka.actor.Actor
+import akka.persistence.PersistentActor
 import com.reactmq.util.NowProvider
 
-class QueueActor extends Actor with QueueActorStorage with QueueActorReceive {
+class QueueActor extends PersistentActor with QueueActorStorage with QueueActorReceive with QueueActorRecover {
+  override def persistenceId = "queue-actor"
+
   val nowProvider = new NowProvider()
 
-  override def receive = handleQueueMsg
+  def receiveCommand = handleQueueMsg
+
+  def receiveRecover = handleQueueEvent
 }
 

@@ -22,15 +22,17 @@ trait QueueActorMessageOps extends Logging {
 
     logger.debug(s"Sent message with id ${internalMessage.id}")
 
-    internalMessage.id
+    internalMessage
   }
 
-  protected def receiveMessages(count: Int): List[MessageData] = {
+  type ReceiveData = (MessageData, MessageNextDeliveryUpdated)
+
+  protected def receiveMessages(count: Int): List[ReceiveData] = {
 
     val deliveryTime = nowProvider.nowMillis
 
     @tailrec
-    def doReceiveMessages(left: Int, acc: List[MessageData]): List[MessageData] = {
+    def doReceiveMessages(left: Int, acc: List[ReceiveData]): List[ReceiveData] = {
       if (left == 0) {
         acc
       } else {
@@ -45,7 +47,7 @@ trait QueueActorMessageOps extends Logging {
   }
 
   @tailrec
-  private def receiveMessage(deliveryTime: Long, newNextDelivery: Long): Option[MessageData] = {
+  private def receiveMessage(deliveryTime: Long, newNextDelivery: Long): Option[ReceiveData] = {
     if (messageQueue.size == 0) {
       None
     } else {
@@ -64,7 +66,7 @@ trait QueueActorMessageOps extends Logging {
 
         logger.debug(s"Receiving message $id")
 
-        Some(internalMessage.toMessageData)
+        Some(internalMessage.toMessageData, internalMessage.toMessageNextDeliveryUpdated)
       } else {
         // Deleted msg - trying again
         receiveMessage(deliveryTime, newNextDelivery)
