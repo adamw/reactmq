@@ -1,7 +1,7 @@
 package com.reactmq
 
 import akka.actor.ActorSystem
-import akka.stream.{FlowMaterializer, MaterializerSettings}
+import akka.stream.scaladsl2.FlowMaterializer
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.Future
@@ -13,9 +13,8 @@ trait ReactiveStreamsSupport extends Logging {
 
   implicit val timeout = Timeout(5.seconds)
 
-  val settings = MaterializerSettings()
-  val materializer = FlowMaterializer(settings)
-  
+  implicit val materializer = FlowMaterializer()
+
   def handleIOFailure(ioFuture: Future[Any], msg: => String) {
     ioFuture.onFailure {
       case e: Exception =>

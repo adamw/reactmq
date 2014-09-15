@@ -1,19 +1,19 @@
 package com.reactmq
 
-import akka.stream.scaladsl.Flow
+import akka.stream.actor.{ActorPublisher, ActorSubscriber}
 import akka.actor.Props
 import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
+import akka.stream.scaladsl2.FlowFrom
 import com.reactmq.queue.{MessageData, DeleteMessage, QueueActor}
-import akka.stream.actor.{ActorConsumer, ActorProducer}
 import Framing._
 
 object Broker extends App with ReactiveStreamsSupport {
 
   val ioExt = IO(StreamTcp)
-  val bindSendFuture = ioExt ? StreamTcp.Bind(settings, sendServerAddress)
-  val bindReceiveFuture = ioExt ? StreamTcp.Bind(settings, receiveServerAddress)
+  val bindSendFuture = ioExt ? StreamTcp.Bind(sendServerAddress)
+  val bindReceiveFuture = ioExt ? StreamTcp.Bind(receiveServerAddress)
 
   val queueActor = system.actorOf(Props[QueueActor])
 
@@ -21,42 +21,41 @@ object Broker extends App with ReactiveStreamsSupport {
     case serverBinding: StreamTcp.TcpServerBinding =>
       logger.info("Broker: send bound")
 
-      Flow(serverBinding.connectionStream).foreach { conn =>
+      FlowFrom(serverBinding.connectionStream).map { conn =>
         logger.info(s"Broker: send client connected (${conn.remoteAddress})")
 
-        val sendToQueueConsumer = ActorConsumer[String](system.actorOf(Props(new SendToQueueConsumer(queueActor))))
+        val sendToQueueSubscriber = ActorSubscriber[String](system.actorOf(Props(new SendToQueueSubscriber(queueActor))))
 
         // sending messages to the queue, receiving from the client
         val reconcileFrames = new ReconcileFrames()
-        Flow(conn.inputStream)
+        FlowFrom(conn.inputStream)
           .mapConcat(reconcileFrames.apply)
-          .produceTo(materializer, sendToQueueConsumer)
-      }.consume(materializer)
+          .publishTo(sendToQueueSubscriber)
+      }.consume()
   }
 
   bindReceiveFuture.onSuccess {
     case serverBinding: StreamTcp.TcpServerBinding =>
       logger.info("Broker: receive bound")
 
-      Flow(serverBinding.connectionStream).foreach { conn =>
+      FlowFrom(serverBinding.connectionStream).map { conn =>
         logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
 
-        val receiveFromQueueProducer = ActorProducer[MessageData](system.actorOf(Props(new ReceiveFromQueueProducer(queueActor))))
+        val receiveFromQueuePublisher = ActorPublisher[MessageData](system.actorOf(Props(new ReceiveFromQueuePublisher(queueActor))))
 
         // receiving messages from the queue, sending to the client
-        Flow(receiveFromQueueProducer)
+        FlowFrom(receiveFromQueuePublisher)
           .map(_.encodeAsString)
           .map(createFrame)
-          .toProducer(materializer)
-          .produceTo(conn.outputStream)
+          .publishTo(conn.outputStream)
 
         // replies: ids of messages to delete
         val reconcileFrames = new ReconcileFrames()
-        Flow(conn.inputStream)
+        FlowFrom(conn.inputStream)
           .mapConcat(reconcileFrames.apply)
-          .foreach(queueActor ! DeleteMessage(_))
-          .consume(materializer)
-      }.consume(materializer)
+          .map(queueActor ! DeleteMessage(_))
+          .consume()
+      }.consume()
   }
 
   handleIOFailure(bindSendFuture, "Broker: failed to bind send endpoint")

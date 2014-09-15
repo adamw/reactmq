@@ -1,11 +1,11 @@
 package com.reactmq
 
 import akka.actor.ActorRef
-import akka.stream.actor.ActorConsumer
+import akka.stream.actor.{MaxInFlightRequestStrategy, ActorSubscriber}
 import com.reactmq.queue.{SendMessage, SentMessage}
-import akka.stream.actor.ActorConsumer.{OnNext, MaxInFlightRequestStrategy}
+import akka.stream.actor.ActorSubscriberMessage.OnNext
 
-class SendToQueueConsumer(queueActor: ActorRef) extends ActorConsumer {
+class SendToQueueSubscriber(queueActor: ActorRef) extends ActorSubscriber {
 
   private var inFlight = 0
 
