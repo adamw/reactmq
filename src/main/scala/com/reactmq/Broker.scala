@@ -5,7 +5,7 @@ import akka.actor.Props
 import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
-import akka.stream.scaladsl2.{ForeachSink, FlowFrom}
+import akka.stream.scaladsl2.{BlackholeDrain, ForeachDrain, Source, Sink}
 import com.reactmq.queue.{MessageData, DeleteMessage, QueueActor}
 import Framing._
 
@@ -21,16 +21,17 @@ object Broker extends App with ReactiveStreamsSupport {
     case serverBinding: StreamTcp.TcpServerBinding =>
       logger.info("Broker: send bound")
 
-      FlowFrom(serverBinding.connectionStream).withSink(ForeachSink { conn =>
+      Source(serverBinding.connectionStream).connect(ForeachDrain[StreamTcp.IncomingTcpConnection] { conn =>
         logger.info(s"Broker: send client connected (${conn.remoteAddress})")
 
         val sendToQueueSubscriber = ActorSubscriber[String](system.actorOf(Props(new SendToQueueSubscriber(queueActor))))
 
         // sending messages to the queue, receiving from the client
         val reconcileFrames = new ReconcileFrames()
-        FlowFrom(conn.inputStream)
+        Source(conn.inputStream)
           .mapConcat(reconcileFrames.apply)
-          .publishTo(sendToQueueSubscriber)
+          .connect(Sink(sendToQueueSubscriber))
+          .run()
       }).run()
   }
 
@@ -38,23 +39,25 @@ object Broker extends App with ReactiveStreamsSupport {
     case serverBinding: StreamTcp.TcpServerBinding =>
       logger.info("Broker: receive bound")
 
-      FlowFrom(serverBinding.connectionStream).withSink(ForeachSink { conn =>
+      Source(serverBinding.connectionStream).connect(ForeachDrain[StreamTcp.IncomingTcpConnection] { conn =>
         logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
 
         val receiveFromQueuePublisher = ActorPublisher[MessageData](system.actorOf(Props(new ReceiveFromQueuePublisher(queueActor))))
 
         // receiving messages from the queue, sending to the client
-        FlowFrom(receiveFromQueuePublisher)
+        Source(receiveFromQueuePublisher)
           .map(_.encodeAsString)
           .map(createFrame)
-          .publishTo(conn.outputStream)
+          .connect(Sink(conn.outputStream))
+          .run()
 
         // replies: ids of messages to delete
         val reconcileFrames = new ReconcileFrames()
-        FlowFrom(conn.inputStream)
+        Source(conn.inputStream)
           .mapConcat(reconcileFrames.apply)
           .map(queueActor ! DeleteMessage(_))
-          .consume()
+          .connect(BlackholeDrain)
+          .run()
       }).run()
   }
 

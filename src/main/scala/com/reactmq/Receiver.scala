@@ -4,7 +4,7 @@ import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
 import Framing._
-import akka.stream.scaladsl2.FlowFrom
+import akka.stream.scaladsl2.{Source, Sink}
 import com.reactmq.queue.MessageData
 
 object Receiver extends App with ReactiveStreamsSupport {
@@ -16,14 +16,15 @@ object Receiver extends App with ReactiveStreamsSupport {
 
       val reconcileFrames = new ReconcileFrames()
 
-      FlowFrom(binding.inputStream)
+      Source(binding.inputStream)
         .mapConcat(reconcileFrames.apply)
         .map(MessageData.decodeFromString)
         .map { md =>
           logger.debug(s"Receiver: received msg: $md")
           createFrame(md.id)
         }
-        .publishTo(binding.outputStream)
+        .connect(Sink(binding.outputStream))
+        .run()
   }
 
   handleIOFailure(connectFuture, "Receiver: failed to connect to broker")
