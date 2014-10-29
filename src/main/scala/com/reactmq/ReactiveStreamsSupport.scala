@@ -5,10 +5,10 @@ import akka.stream.scaladsl2.FlowMaterializer
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.Future
-import java.net.InetSocketAddress
 
 trait ReactiveStreamsSupport extends Logging {
-  implicit val system = ActorSystem()
+  implicit def system: ActorSystem
+
   implicit val dispatcher = system.dispatcher
 
   implicit val timeout = Timeout(5.seconds)
@@ -22,7 +22,4 @@ trait ReactiveStreamsSupport extends Logging {
         system.shutdown()
     }
   }
-
-  val sendServerAddress     = new InetSocketAddress("localhost", 9182)
-  val receiveServerAddress  = new InetSocketAddress("localhost", 9183)
 }
