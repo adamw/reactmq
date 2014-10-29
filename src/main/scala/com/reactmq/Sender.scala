@@ -13,7 +13,7 @@ import com.reactmq.Framing._
 import scala.concurrent.duration._
 
 class Sender(sendServerAddress: InetSocketAddress)(implicit val system: ActorSystem) extends ReactiveStreamsSupport {
-  def run() {
+  def run(): Unit = {
     val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(sendServerAddress)
     connectFuture.onSuccess {
       case binding: StreamTcp.OutgoingTcpConnection =>

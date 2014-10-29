@@ -11,7 +11,7 @@ import akka.stream.scaladsl2.{Source, Sink}
 import com.reactmq.queue.MessageData
 
 class Receiver(receiveServerAddress: InetSocketAddress)(implicit val system: ActorSystem) extends ReactiveStreamsSupport {
-  def run() {
+  def run(): Unit = {
     val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(receiveServerAddress)
     connectFuture.onSuccess {
       case binding: StreamTcp.OutgoingTcpConnection =>

@@ -14,7 +14,7 @@ import Framing._
 class Broker(sendServerAddress: InetSocketAddress, receiveServerAddress: InetSocketAddress)
   (implicit val system: ActorSystem) extends ReactiveStreamsSupport {
 
-  def run() {
+  def run(): Unit = {
     val ioExt = IO(StreamTcp)
     val bindSendFuture = ioExt ? StreamTcp.Bind(sendServerAddress)
     val bindReceiveFuture = ioExt ? StreamTcp.Bind(receiveServerAddress)
