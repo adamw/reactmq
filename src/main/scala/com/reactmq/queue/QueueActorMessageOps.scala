@@ -77,7 +77,8 @@ trait QueueActorMessageOps extends Logging {
   private def computeNextDelivery = nowProvider.nowMillis + visibilityTimeout.toMillis
 
   protected def deleteMessage(id: String) {
-    messagesById.remove(id)
-    logger.debug(s"Deleted message $id")
+    messagesById.remove(id).fold(logger.debug(s"Unknown message: $id")) {
+      _ => logger.debug(s"Deleted message $id")
+    }
   }
 }
