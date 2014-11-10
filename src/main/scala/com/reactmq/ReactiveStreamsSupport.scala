@@ -1,7 +1,7 @@
 package com.reactmq
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl2.FlowMaterializer
+import akka.stream.FlowMaterializer
 import akka.util.Timeout
 import scala.concurrent.duration._
 import scala.concurrent.{Promise, Future}

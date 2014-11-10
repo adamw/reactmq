@@ -7,7 +7,7 @@ import akka.actor.{ActorSystem, Props}
 import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
-import akka.stream.scaladsl2.{BlackholeDrain, ForeachDrain, Source, Sink}
+import akka.stream.scaladsl.{BlackholeSink, ForeachSink, Source, Sink}
 import com.reactmq.queue.{MessageData, DeleteMessage, QueueActor}
 import Framing._
 
@@ -25,7 +25,7 @@ class Broker(sendServerAddress: InetSocketAddress, receiveServerAddress: InetSoc
       case serverBinding: StreamTcp.TcpServerBinding =>
         logger.info("Broker: send bound")
 
-        Source(serverBinding.connectionStream).connect(ForeachDrain[StreamTcp.IncomingTcpConnection] { conn =>
+        Source(serverBinding.connectionStream).runWith(ForeachSink[StreamTcp.IncomingTcpConnection] { conn =>
           logger.info(s"Broker: send client connected (${conn.remoteAddress})")
 
           val sendToQueueSubscriber = ActorSubscriber[String](system.actorOf(Props(new SendToQueueSubscriber(queueActor))))
@@ -34,16 +34,15 @@ class Broker(sendServerAddress: InetSocketAddress, receiveServerAddress: InetSoc
           val reconcileFrames = new ReconcileFrames()
           Source(conn.inputStream)
             .mapConcat(reconcileFrames.apply)
-            .connect(Sink(sendToQueueSubscriber))
-            .run()
-        }).run()
+            .runWith(Sink(sendToQueueSubscriber))
+        })
     }
 
     bindReceiveFuture.onSuccess {
       case serverBinding: StreamTcp.TcpServerBinding =>
         logger.info("Broker: receive bound")
 
-        Source(serverBinding.connectionStream).connect(ForeachDrain[StreamTcp.IncomingTcpConnection] { conn =>
+        Source(serverBinding.connectionStream).runWith(ForeachSink[StreamTcp.IncomingTcpConnection] { conn =>
           logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
 
           val receiveFromQueuePublisher = ActorPublisher[MessageData](system.actorOf(Props(new ReceiveFromQueuePublisher(queueActor))))
@@ -52,17 +51,15 @@ class Broker(sendServerAddress: InetSocketAddress, receiveServerAddress: InetSoc
           Source(receiveFromQueuePublisher)
             .map(_.encodeAsString)
             .map(createFrame)
-            .connect(Sink(conn.outputStream))
-            .run()
+            .runWith(Sink(conn.outputStream))
 
           // replies: ids of messages to delete
           val reconcileFrames = new ReconcileFrames()
           Source(conn.inputStream)
             .mapConcat(reconcileFrames.apply)
             .map(queueActor ! DeleteMessage(_))
-            .connect(BlackholeDrain)
-            .run()
-        }).run()
+            .runWith(BlackholeSink)
+        })
     }
 
     handleIOFailure(bindSendFuture, "Broker: failed to bind send endpoint")

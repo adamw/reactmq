@@ -7,7 +7,7 @@ import akka.actor.ActorSystem
 import akka.io.IO
 import akka.pattern.ask
 import akka.stream.io.StreamTcp
-import akka.stream.scaladsl2.{OnCompleteDrain, Source, Sink}
+import akka.stream.scaladsl.{OnCompleteSink, Source, Sink}
 import akka.util.ByteString
 import com.reactmq.Framing._
 
@@ -32,12 +32,10 @@ class Sender(sendServerAddress: InetSocketAddress)(implicit val system: ActorSys
             logger.debug(s"Sender: sending $msg")
             createFrame(msg)
           }
-          .connect(Sink(binding.outputStream))
-          .run()
+          .runWith(Sink(binding.outputStream))
 
         Source(binding.inputStream)
-          .connect(OnCompleteDrain[ByteString] { t => completionPromise.complete(t); () })
-          .run()
+          .runWith(OnCompleteSink[ByteString] { t => completionPromise.complete(t); () })
     }
 
     handleIOFailure(connectFuture, "Sender: failed to connect to broker", Some(completionPromise))

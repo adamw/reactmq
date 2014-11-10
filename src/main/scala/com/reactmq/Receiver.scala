@@ -7,7 +7,7 @@ import akka.io.IO
 import akka.stream.io.StreamTcp
 import akka.pattern.ask
 import Framing._
-import akka.stream.scaladsl2._
+import akka.stream.scaladsl._
 import FlowGraphImplicits._
 import akka.util.ByteString
 import com.reactmq.queue.MessageData
@@ -38,7 +38,7 @@ class Receiver(receiveServerAddress: InetSocketAddress)(implicit val system: Act
             }
 
           split ~> mainFlow ~> Sink(binding.outputStream)
-          split ~> OnCompleteDrain[ByteString] { t => completionPromise.complete(t); () }
+          split ~> OnCompleteSink[ByteString] { t => completionPromise.complete(t); () }
         }.run()
     }
 
