@@ -2,68 +2,68 @@ package com.reactmq
 
 import java.net.InetSocketAddress
 
-import akka.stream.actor.{ActorPublisher, ActorSubscriber}
 import akka.actor.{ActorSystem, Props}
-import akka.io.IO
+import akka.stream.actor.{ActorPublisher, ActorSubscriber}
 import akka.stream.io.StreamTcp
-import akka.pattern.ask
-import akka.stream.scaladsl.{BlackholeSink, ForeachSink, Source, Sink}
-import com.reactmq.queue.{MessageData, DeleteMessage, QueueActor}
-import Framing._
+import akka.stream.scaladsl._
+import akka.util.ByteString
+import com.reactmq.Framing._
+import com.reactmq.queue.{DeleteMessage, MessageData, QueueActor}
+
+import scala.concurrent.{Promise, Future}
 
 class Broker(sendServerAddress: InetSocketAddress, receiveServerAddress: InetSocketAddress)
-  (implicit val system: ActorSystem) extends ReactiveStreamsSupport {
+            (implicit val system: ActorSystem) extends ReactiveStreamsSupport {
 
   def run(): Unit = {
-    val ioExt = IO(StreamTcp)
-    val bindSendFuture = ioExt ? StreamTcp.Bind(sendServerAddress)
-    val bindReceiveFuture = ioExt ? StreamTcp.Bind(receiveServerAddress)
-
     val queueActor = system.actorOf(Props[QueueActor])
 
-    bindSendFuture.onSuccess {
-      case serverBinding: StreamTcp.TcpServerBinding =>
-        logger.info("Broker: send bound")
+    val sendFuture = StreamTcp().bind(sendServerAddress).connections.foreach { conn =>
+      logger.info(s"Broker: send client connected (${conn.remoteAddress})")
 
-        Source(serverBinding.connectionStream).runWith(ForeachSink[StreamTcp.IncomingTcpConnection] { conn =>
-          logger.info(s"Broker: send client connected (${conn.remoteAddress})")
+      val sendToQueueSubscriber = ActorSubscriber[String](system.actorOf(Props(new SendToQueueSubscriber(queueActor))))
 
-          val sendToQueueSubscriber = ActorSubscriber[String](system.actorOf(Props(new SendToQueueSubscriber(queueActor))))
+      // sending messages to the queue, receiving from the client
+      val reconcileFrames = new ReconcileFrames()
 
-          // sending messages to the queue, receiving from the client
-          val reconcileFrames = new ReconcileFrames()
-          Source(conn.inputStream)
-            .mapConcat(reconcileFrames.apply)
-            .runWith(Sink(sendToQueueSubscriber))
-        })
+      val sendSink = Flow[ByteString]
+        .mapConcat(reconcileFrames.apply)
+        .to(Sink(sendToQueueSubscriber))
+
+      // TODO?
+      conn.flow.to(sendSink).runWith(FutureSource(Promise().future))
     }
 
-    bindReceiveFuture.onSuccess {
-      case serverBinding: StreamTcp.TcpServerBinding =>
-        logger.info("Broker: receive bound")
+    val receiveFuture = StreamTcp().bind(receiveServerAddress).connections.foreach { conn =>
+      logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
 
-        Source(serverBinding.connectionStream).runWith(ForeachSink[StreamTcp.IncomingTcpConnection] { conn =>
-          logger.info(s"Broker: receive client connected (${conn.remoteAddress})")
+      val receiveFromQueuePublisher = ActorPublisher[MessageData](system.actorOf(Props(new ReceiveFromQueuePublisher(queueActor))))
 
-          val receiveFromQueuePublisher = ActorPublisher[MessageData](system.actorOf(Props(new ReceiveFromQueuePublisher(queueActor))))
+      // receiving messages from the queue, sending to the client
+      val receiveSource = Source(receiveFromQueuePublisher)
+        .map(_.encodeAsString)
+        .map(createFrame)
 
-          // receiving messages from the queue, sending to the client
-          Source(receiveFromQueuePublisher)
-            .map(_.encodeAsString)
-            .map(createFrame)
-            .runWith(Sink(conn.outputStream))
+      // replies: ids of messages to delete
+      val reconcileFrames = new ReconcileFrames()
+      val replySink = Flow[ByteString]
+        .mapConcat(reconcileFrames.apply)
+        .map(queueActor ! DeleteMessage(_))
+        .to(BlackholeSink)
 
-          // replies: ids of messages to delete
-          val reconcileFrames = new ReconcileFrames()
-          Source(conn.inputStream)
-            .mapConcat(reconcileFrames.apply)
-            .map(queueActor ! DeleteMessage(_))
-            .runWith(BlackholeSink)
-        })
+      receiveSource.via(conn.flow).to(replySink).run()
     }
 
-    handleIOFailure(bindSendFuture, "Broker: failed to bind send endpoint")
-    handleIOFailure(bindReceiveFuture, "Broker: failed to bind receive endpoint")
+    handleIOFailure(sendFuture, "Broker: failed to bind send endpoint")
+    handleIOFailure(receiveFuture, "Broker: failed to bind receive endpoint")
+  }
+
+  private def handleIOFailure(ioFuture: Future[Any], msg: => String, failPromise: Option[Promise[Unit]] = None) {
+    ioFuture.onFailure {
+      case e: Exception =>
+        logger.error(msg, e)
+        failPromise.foreach(_.failure(e))
+    }
   }
 }
 

@@ -3,13 +3,11 @@ package com.reactmq
 import java.net.InetSocketAddress
 
 import akka.actor.ActorSystem
-import akka.io.IO
 import akka.stream.io.StreamTcp
-import akka.pattern.ask
-import Framing._
+import akka.stream.scaladsl.FlowGraphImplicits._
 import akka.stream.scaladsl._
-import FlowGraphImplicits._
 import akka.util.ByteString
+import com.reactmq.Framing._
 import com.reactmq.queue.MessageData
 
 import scala.concurrent.{Future, Promise}
@@ -18,36 +16,44 @@ class Receiver(receiveServerAddress: InetSocketAddress)(implicit val system: Act
   def run(): Future[Unit] = {
     val completionPromise = Promise[Unit]()
 
-    val connectFuture = IO(StreamTcp) ? StreamTcp.Connect(receiveServerAddress)
-    connectFuture.onSuccess {
-      case binding: StreamTcp.OutgoingTcpConnection =>
-        logger.info("Receiver: connected to broker")
+    val serverConnection = StreamTcp().outgoingConnection(receiveServerAddress)
 
-        val reconcileFrames = new ReconcileFrames()
+    val reconcileFrames = new ReconcileFrames()
 
-        FlowGraph { implicit b =>
-          val split = Broadcast[ByteString]
-          Source(binding.inputStream) ~> split
+    val receiverFlow = Flow() { implicit b =>
+      val in = UndefinedSource[ByteString]
+      val out = UndefinedSink[ByteString]
 
-          val mainFlow = Flow[ByteString]
-            .mapConcat(reconcileFrames.apply)
-            .map(MessageData.decodeFromString)
-            .map { md =>
-              logger.debug(s"Receiver: received msg: $md")
-              createFrame(md.id)
-            }
+      val split = Broadcast[ByteString]
 
-          split ~> mainFlow ~> Sink(binding.outputStream)
-          split ~> OnCompleteSink[ByteString] { t => completionPromise.complete(t); () }
-        }.run()
+      val mainFlow = Flow[ByteString]
+        .mapConcat(reconcileFrames.apply)
+        .map(MessageData.decodeFromString)
+        .map { md =>
+        logger.debug(s"Receiver: received msg: $md")
+        createFrame(md.id)
+      }
+
+      in ~> split
+
+      split ~> mainFlow ~> out
+      split ~> OnCompleteSink[ByteString] { t => completionPromise.complete(t); () }
+
+      (in, out)
     }
 
-    handleIOFailure(connectFuture, "Receiver: failed to connect to broker", Some(completionPromise))
+    val materializedMap = serverConnection.handleWith(receiverFlow)
+    val connectFuture = serverConnection.localAddress(materializedMap)
+
+    connectFuture.onSuccess { case _ => logger.debug(s"Receiver: connected to broker") }
+    connectFuture.onFailure { case e: Exception => logger.error("Receiver: failed to connect to broker", e) }
 
     completionPromise.future
   }
 }
 
-object SimpleReceiver extends App with SimpleServerSupport {
-  new Receiver(receiveServerAddress).run()
+object SimpleReceiver extends App with SimpleServerSupport with Logging {
+  val receiver: Receiver = new Receiver(receiveServerAddress)
+  import receiver.system.dispatcher
+  receiver.run().onComplete(result => logger.info("Receiver: completed with result " + result))
 }
