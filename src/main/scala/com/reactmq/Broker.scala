@@ -4,7 +4,6 @@ import java.net.InetSocketAddress
 
 import akka.actor.{ActorSystem, Props}
 import akka.stream.actor.{ActorPublisher, ActorSubscriber}
-import akka.stream.io.StreamTcp
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import com.reactmq.Framing._

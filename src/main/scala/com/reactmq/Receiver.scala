@@ -3,7 +3,6 @@ package com.reactmq
 import java.net.InetSocketAddress
 
 import akka.actor.ActorSystem
-import akka.stream.io.StreamTcp
 import akka.stream.scaladsl.FlowGraphImplicits._
 import akka.stream.scaladsl._
 import akka.util.ByteString

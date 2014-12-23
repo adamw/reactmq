@@ -4,7 +4,6 @@ import java.net.InetSocketAddress
 import java.util.concurrent.ThreadLocalRandom
 
 import akka.actor.ActorSystem
-import akka.stream.io.StreamTcp
 import akka.stream.scaladsl._
 import akka.util.ByteString
 import com.reactmq.Framing._
